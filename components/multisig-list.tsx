@@ -142,25 +142,14 @@ export function MultisigList() {
     setLabelInput("");
   };
 
-  if (!publicKey) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <Users className="text-muted-foreground mb-4 h-12 w-12" />
-          <p className="text-muted-foreground">
-            Connect your wallet to view multisigs
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const hasMultisigs = multisigs.length > 0;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-2xl font-bold">Your Multisigs</h2>
         <div className="flex items-center gap-2">
-          {multisigs.length > 0 && (
+          {hasMultisigs && (
             <>
               <Button variant="outline" size="sm" onClick={toggleSelectAll}>
                 {selectedForDeletion.size === multisigs.length
@@ -179,28 +168,40 @@ export function MultisigList() {
               )}
             </>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadMultisigs}
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-          </Button>
+          {publicKey && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadMultisigs}
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
       </div>
 
-      {multisigs.length === 0 && !loading && (
+      {!hasMultisigs && !loading && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Users className="text-muted-foreground mb-4 h-12 w-12" />
-            <p className="text-muted-foreground">
-              No multisigs found. Create your first one!
-            </p>
+            {publicKey ? (
+              <p className="text-muted-foreground">
+                No multisigs found. Create or import one!
+              </p>
+            ) : (
+              <div className="text-muted-foreground space-y-2 text-center">
+                <p>No multisigs in your list yet.</p>
+                <p className="text-sm">
+                  Import an existing multisig or connect your wallet to create a
+                  new one.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -2,6 +2,7 @@
 
 import { ChevronDown, FileDown, Plus } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { CreateMultisigDialog } from "@/components/create-multisig-dialog";
 import { ImportMultisigDialog } from "@/components/import-multisig-dialog";
@@ -13,10 +14,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useWalletStore } from "@/stores/wallet-store";
 
 export default function Home() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const { publicKey } = useWalletStore();
+
+  const handleCreateClick = () => {
+    if (!publicKey) {
+      toast.error("Please connect your wallet to create a multisig");
+      return;
+    }
+    setCreateDialogOpen(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -36,7 +47,7 @@ export default function Home() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setCreateDialogOpen(true)}>
+            <DropdownMenuItem onClick={handleCreateClick}>
               <Plus className="mr-2 h-4 w-4" />
               Create New
             </DropdownMenuItem>

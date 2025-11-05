@@ -38,7 +38,6 @@ import { SquadService } from "@/lib/squad";
 import { chainIdSchema, labelSchema, publicKeySchema } from "@/lib/validation";
 import { useChainStore } from "@/stores/chain-store";
 import { useMultisigStore } from "@/stores/multisig-store";
-import { useWalletStore } from "@/stores/wallet-store";
 import type { SquadMember } from "@/types/squad";
 
 interface ImportMultisigDialogProps {
@@ -60,7 +59,6 @@ export function ImportMultisigDialog({
 }: ImportMultisigDialogProps) {
   const [loading, setLoading] = useState(false);
 
-  const { publicKey } = useWalletStore();
   const { getSelectedChain, chains } = useChainStore();
   const { addMultisig } = useMultisigStore();
 
@@ -74,11 +72,6 @@ export function ImportMultisigDialog({
   });
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    if (!publicKey) {
-      toast.error("Please connect your wallet first");
-      return;
-    }
-
     const chain = chains.find((c) => c.id === data.chainId);
     if (!chain) {
       toast.error("Selected chain not found");
