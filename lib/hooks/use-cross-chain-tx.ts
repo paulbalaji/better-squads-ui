@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { crossChainTxService } from "@/lib/cross-chain-tx";
-import { ledgerService } from "@/lib/ledger";
+import { transactionSignerService } from "@/lib/transaction-signer";
 import { useChainStore } from "@/stores/chain-store";
 import { useWalletStore } from "@/stores/wallet-store";
 import type { ChainConfig } from "@/types/chain";
@@ -72,16 +72,28 @@ export function useCrossChainTransaction() {
           chain
         );
 
-        // Sign with Ledger
-        const serialized =
-          txWithBlockhash instanceof Transaction
-            ? txWithBlockhash.serializeMessage()
-            : Buffer.from(txWithBlockhash.message.serialize());
-
-        const signedBuffer = await ledgerService.signTransaction(
-          serialized,
-          derivationPath
-        );
+        // Sign the transaction
+        let signedBuffer: Buffer;
+        if (txWithBlockhash instanceof Transaction) {
+          const signedTx = await transactionSignerService.signTransaction(
+            txWithBlockhash,
+            {
+              walletType,
+              derivationPath,
+            }
+          );
+          signedBuffer = signedTx.serialize();
+        } else {
+          const signedTx =
+            await transactionSignerService.signVersionedTransaction(
+              txWithBlockhash,
+              {
+                walletType,
+                derivationPath,
+              }
+            );
+          signedBuffer = Buffer.from(signedTx.serialize());
+        }
 
         // Optionally store before sending
         if (options?.storeBeforeSend && options?.transactionId) {
@@ -200,15 +212,26 @@ export function useCrossChainTransaction() {
           chain
         );
 
-        const serialized =
-          txWithBlockhash instanceof Transaction
-            ? txWithBlockhash.serializeMessage()
-            : Buffer.from(txWithBlockhash.message.serialize());
-
-        signed = await ledgerService.signTransaction(
-          serialized,
-          derivationPath
-        );
+        if (txWithBlockhash instanceof Transaction) {
+          const signedTx = await transactionSignerService.signTransaction(
+            txWithBlockhash,
+            {
+              walletType,
+              derivationPath,
+            }
+          );
+          signed = signedTx.serialize();
+        } else {
+          const signedTx =
+            await transactionSignerService.signVersionedTransaction(
+              txWithBlockhash,
+              {
+                walletType,
+                derivationPath,
+              }
+            );
+          signed = signedTx.serialize();
+        }
       } else {
         throw new Error("Unsupported wallet type");
       }

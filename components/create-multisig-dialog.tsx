@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -32,8 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ledgerService } from "@/lib/ledger";
 import { SquadService } from "@/lib/squad";
+import { transactionSignerService } from "@/lib/transaction-signer";
 import { createMultisigSchema } from "@/lib/validation";
 import { useChainStore } from "@/stores/chain-store";
 import { useMultisigStore } from "@/stores/multisig-store";
@@ -65,9 +66,10 @@ export function CreateMultisigDialog({
 }: CreateMultisigDialogProps) {
   const [loading, setLoading] = useState(false);
 
-  const { publicKey, derivationPath } = useWalletStore();
+  const { publicKey, derivationPath, walletType } = useWalletStore();
   const { getSelectedChain, chains } = useChainStore();
   const { addMultisig } = useMultisigStore();
+  const wallet = useWallet();
 
   const form = useForm<CreateMultisigFormValues>({
     resolver: zodResolver(createMultisigSchema),
@@ -128,17 +130,20 @@ export function CreateMultisigDialog({
 
       transaction.partialSign(createKey);
 
-      const serialized = transaction.serializeMessage();
-      const signature = await ledgerService.signTransaction(
-        serialized,
-        derivationPath
+      const signedTransaction = await transactionSignerService.signTransaction(
+        transaction,
+        {
+          walletType,
+          derivationPath,
+          walletAdapter: wallet.signTransaction
+            ? { signTransaction: wallet.signTransaction.bind(wallet) }
+            : undefined,
+        }
       );
-
-      transaction.addSignature(publicKey, signature);
 
       const txid = await squadService
         .getConnection()
-        .sendRawTransaction(transaction.serialize());
+        .sendRawTransaction(signedTransaction.serialize());
 
       await squadService.getConnection().confirmTransaction(txid);
 

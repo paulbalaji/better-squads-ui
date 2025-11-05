@@ -1,5 +1,6 @@
 "use client";
 
+import { useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
 import { Check, Copy, Eye, Loader2, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -20,8 +21,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ledgerService } from "@/lib/ledger";
 import { SquadService } from "@/lib/squad";
+import { transactionSignerService } from "@/lib/transaction-signer";
 import { useChainStore } from "@/stores/chain-store";
 import { useMultisigStore } from "@/stores/multisig-store";
 import { useWalletStore } from "@/stores/wallet-store";
@@ -45,10 +46,11 @@ export function ProposalList({
   const [selectedProposal, setSelectedProposal] =
     useState<ProposalAccount | null>(null);
 
-  const { publicKey, derivationPath } = useWalletStore();
+  const { publicKey, derivationPath, walletType } = useWalletStore();
   const { chains } = useChainStore();
   const { proposals, setProposals, getSelectedMultisig, selectedMultisigKey } =
     useMultisigStore();
+  const wallet = useWallet();
 
   const selectedMultisig = getSelectedMultisig();
 
@@ -174,17 +176,20 @@ export function ProposalList({
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = publicKey;
 
-      const serialized = transaction.serializeMessage();
-      const signature = await ledgerService.signTransaction(
-        serialized,
-        derivationPath
+      const signedTransaction = await transactionSignerService.signTransaction(
+        transaction,
+        {
+          walletType,
+          derivationPath,
+          walletAdapter: wallet.signTransaction
+            ? { signTransaction: wallet.signTransaction.bind(wallet) }
+            : undefined,
+        }
       );
-
-      transaction.addSignature(publicKey, signature);
 
       const txid = await squadService
         .getConnection()
-        .sendRawTransaction(transaction.serialize());
+        .sendRawTransaction(signedTransaction.serialize());
 
       await squadService.getConnection().confirmTransaction(txid);
 
@@ -229,17 +234,20 @@ export function ProposalList({
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = publicKey;
 
-      const serialized = transaction.serializeMessage();
-      const signature = await ledgerService.signTransaction(
-        serialized,
-        derivationPath
+      const signedTransaction = await transactionSignerService.signTransaction(
+        transaction,
+        {
+          walletType,
+          derivationPath,
+          walletAdapter: wallet.signTransaction
+            ? { signTransaction: wallet.signTransaction.bind(wallet) }
+            : undefined,
+        }
       );
-
-      transaction.addSignature(publicKey, signature);
 
       const txid = await squadService
         .getConnection()
-        .sendRawTransaction(transaction.serialize());
+        .sendRawTransaction(signedTransaction.serialize());
 
       await squadService.getConnection().confirmTransaction(txid);
 
@@ -289,17 +297,20 @@ export function ProposalList({
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = publicKey;
 
-      const serialized = transaction.serializeMessage();
-      const signature = await ledgerService.signTransaction(
-        serialized,
-        derivationPath
+      const signedTransaction = await transactionSignerService.signTransaction(
+        transaction,
+        {
+          walletType,
+          derivationPath,
+          walletAdapter: wallet.signTransaction
+            ? { signTransaction: wallet.signTransaction.bind(wallet) }
+            : undefined,
+        }
       );
-
-      transaction.addSignature(publicKey, signature);
 
       const txid = await squadService
         .getConnection()
-        .sendRawTransaction(transaction.serialize());
+        .sendRawTransaction(signedTransaction.serialize());
 
       await squadService.getConnection().confirmTransaction(txid);
 
