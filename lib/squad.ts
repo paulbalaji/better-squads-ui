@@ -1,8 +1,11 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import * as multisig from "@sqds/multisig";
 
+import { cache } from "./cache";
+
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
+const CACHE_TTL = 30000; // 30 seconds
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -94,8 +97,22 @@ export class SquadService {
     };
   }
 
-  async getMultisig(multisigPda: PublicKey) {
-    return await this.retryWithBackoff(async () => {
+  async getMultisig(multisigPda: PublicKey, useCache = true) {
+    const cacheKey = `multisig:${multisigPda.toString()}:${this.programId.toString()}`;
+
+    if (useCache) {
+      const cached =
+        cache.get<
+          Awaited<
+            ReturnType<typeof multisig.accounts.Multisig.fromAccountAddress>
+          >
+        >(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const result = await this.retryWithBackoff(async () => {
       // First check if account exists and owner matches
       const accountInfo = await this.connection.getAccountInfo(multisigPda);
 
@@ -136,6 +153,12 @@ export class SquadService {
         throw error;
       }
     }, "Get multisig");
+
+    if (useCache) {
+      cache.set(cacheKey, result, CACHE_TTL);
+    }
+
+    return result;
   }
 
   async getMultisigsByCreator(creator: PublicKey) {
@@ -241,7 +264,23 @@ export class SquadService {
     );
   }
 
-  async getProposalsByMultisig(multisigPda: PublicKey) {
+  async getProposalsByMultisig(multisigPda: PublicKey, useCache = true) {
+    const cacheKey = `proposals:${multisigPda.toString()}:${this.programId.toString()}`;
+
+    if (useCache) {
+      const cached = cache.get<
+        {
+          publicKey: PublicKey;
+          account: ReturnType<
+            typeof multisig.accounts.Proposal.fromAccountInfo
+          >[0];
+        }[]
+      >(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
     const proposals = await this.retryWithBackoff(
       () =>
         this.connection.getProgramAccounts(this.programId, {
@@ -257,7 +296,7 @@ export class SquadService {
       "Get proposals by multisig"
     );
 
-    return proposals
+    const result = proposals
       .map((account) => {
         try {
           const [proposalAccount] = multisig.accounts.Proposal.fromAccountInfo(
@@ -272,16 +311,42 @@ export class SquadService {
         }
       })
       .filter((p) => p !== null);
+
+    if (useCache) {
+      cache.set(cacheKey, result, CACHE_TTL);
+    }
+
+    return result;
   }
 
-  async getVaultTransaction(multisigPda: PublicKey, transactionIndex: bigint) {
+  async getVaultTransaction(
+    multisigPda: PublicKey,
+    transactionIndex: bigint,
+    useCache = true
+  ) {
     const [transactionPda] = multisig.getTransactionPda({
       multisigPda,
       index: transactionIndex,
       programId: this.programId,
     });
 
-    return await this.retryWithBackoff(async () => {
+    const cacheKey = `vaultTx:${multisigPda.toString()}:${transactionIndex}:${this.programId.toString()}`;
+
+    if (useCache) {
+      const cached =
+        cache.get<
+          Awaited<
+            ReturnType<
+              typeof multisig.accounts.VaultTransaction.fromAccountAddress
+            >
+          >
+        >(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const result = await this.retryWithBackoff(async () => {
       // First check if account exists
       const accountInfo = await this.connection.getAccountInfo(transactionPda);
 
@@ -310,6 +375,55 @@ export class SquadService {
         throw error;
       }
     }, "Get vault transaction");
+
+    if (useCache) {
+      cache.set(cacheKey, result, CACHE_TTL);
+    }
+
+    return result;
+  }
+
+  async getConfigTransaction(
+    multisigPda: PublicKey,
+    transactionIndex: bigint,
+    useCache = true
+  ) {
+    const [transactionPda] = multisig.getTransactionPda({
+      multisigPda,
+      index: transactionIndex,
+      programId: this.programId,
+    });
+
+    const cacheKey = `configTx:${multisigPda.toString()}:${transactionIndex}:${this.programId.toString()}`;
+
+    if (useCache) {
+      const cached =
+        cache.get<
+          Awaited<
+            ReturnType<
+              typeof multisig.accounts.ConfigTransaction.fromAccountAddress
+            >
+          >
+        >(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const result = await this.retryWithBackoff(
+      () =>
+        multisig.accounts.ConfigTransaction.fromAccountAddress(
+          this.connection,
+          transactionPda
+        ),
+      "Get config transaction"
+    );
+
+    if (useCache) {
+      cache.set(cacheKey, result, CACHE_TTL);
+    }
+
+    return result;
   }
 
   async getVaultTransactionRaw(
@@ -336,5 +450,19 @@ export class SquadService {
 
   getConnection(): Connection {
     return this.connection;
+  }
+
+  invalidateCache(multisigPda: PublicKey): void {
+    cache.invalidatePattern(multisigPda.toString());
+  }
+
+  invalidateProposalCache(multisigPda: PublicKey): void {
+    const cacheKey = `proposals:${multisigPda.toString()}:${this.programId.toString()}`;
+    cache.invalidate(cacheKey);
+  }
+
+  invalidateMultisigCache(multisigPda: PublicKey): void {
+    const cacheKey = `multisig:${multisigPda.toString()}:${this.programId.toString()}`;
+    cache.invalidate(cacheKey);
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import * as multisig from "@sqds/multisig";
 import bs58 from "bs58";
 import { Copy, ExternalLink, Loader2 } from "lucide-react";
@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { SquadService } from "@/lib/squad";
 import { useChainStore } from "@/stores/chain-store";
 import type { ProposalAccount } from "@/types/multisig";
 
@@ -93,15 +94,17 @@ export function TransactionDetailDialog({
       setConfigData(null);
 
       try {
-        const connection = new Connection(chain.rpcUrl, "confirmed");
+        const squadService = new SquadService(
+          chain.rpcUrl,
+          chain.squadsV4ProgramId
+        );
 
         // Try ConfigTransaction first (typically smaller, 119 bytes)
         try {
-          const configTx =
-            await multisig.accounts.ConfigTransaction.fromAccountAddress(
-              connection,
-              txPda
-            );
+          const configTx = await squadService.getConfigTransaction(
+            proposal.multisig,
+            proposal.transactionIndex
+          );
 
           setConfigData({
             actions: configTx.actions,
@@ -112,11 +115,10 @@ export function TransactionDetailDialog({
         }
 
         // Try VaultTransaction
-        const transactionAccount =
-          await multisig.accounts.VaultTransaction.fromAccountAddress(
-            connection,
-            txPda
-          );
+        const transactionAccount = await squadService.getVaultTransaction(
+          proposal.multisig,
+          proposal.transactionIndex
+        );
 
         const txData: VaultTransactionData = {
           message: {

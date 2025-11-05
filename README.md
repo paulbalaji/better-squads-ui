@@ -8,6 +8,7 @@ A modern web application for managing Squads V4 multisig wallets across multiple
 - 🌐 **Multi-Chain Support** - Manage multisigs across Solana, Soon, Eclipse, SonicSVM, Solaxy, and more
 - 📝 **Proposal Management** - Create, approve, reject, and execute multisig proposals
 - 🔍 **Transaction Details** - View detailed transaction data including instructions and account keys
+- ⚡ **Smart Caching** - Intelligent RPC response caching to reduce network requests and improve performance
 - ⚙️ **Custom RPC Configuration** - Configure custom RPC endpoints for each chain
 - 💾 **Local Storage** - All data stored locally in your browser
 
@@ -65,6 +66,21 @@ Click the Settings icon to:
 - Add custom chains
 - Update program IDs
 - Reset to defaults
+
+## Performance Optimization
+
+### Smart Caching
+
+The app implements an intelligent caching layer to optimize RPC requests:
+
+- **Automatic Caching**: RPC responses are cached for 30 seconds by default
+- **Cache Invalidation**: Cache is automatically cleared when:
+  - Manual refresh is triggered
+  - Proposals are approved, rejected, or executed
+- **Pattern-Based Invalidation**: Supports invalidating related cache entries
+- **TTL Management**: Configurable time-to-live for different data types
+
+This reduces unnecessary RPC calls when switching between multisigs or refreshing proposal lists, providing a smoother user experience and reducing load on RPC endpoints.
 
 ## Tech Stack
 

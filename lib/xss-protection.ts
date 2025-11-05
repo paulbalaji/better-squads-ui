@@ -106,7 +106,7 @@ export function validateObject(obj: unknown): boolean {
  * HOC to sanitize all string props of a component
  * Useful for components that might render user-generated content
  */
-export function sanitizeProps<T extends Record<string, any>>(props: T): T {
+export function sanitizeProps<T extends Record<string, unknown>>(props: T): T {
   const sanitized = { ...props };
 
   for (const key in sanitized) {

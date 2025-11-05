@@ -128,6 +128,20 @@ export function ProposalList({
   }, [loadProposals, refreshTrigger]);
 
   const handleRefresh = async () => {
+    const multisig = getSelectedMultisig();
+    if (!multisig) return;
+
+    const chain = chains.find((c) => c.id === multisig.chainId);
+    if (!chain) return;
+
+    const squadService = new SquadService(
+      chain.rpcUrl,
+      chain.squadsV4ProgramId
+    );
+
+    // Invalidate cache to force fresh fetch
+    squadService.invalidateProposalCache(multisig.publicKey);
+
     await loadProposals();
   };
 
@@ -175,6 +189,7 @@ export function ProposalList({
       await squadService.getConnection().confirmTransaction(txid);
 
       toast.success("Proposal approved!");
+      squadService.invalidateProposalCache(selectedMultisig.publicKey);
       await loadProposals();
     } catch (error) {
       console.error("Failed to approve proposal:", error);
@@ -229,6 +244,7 @@ export function ProposalList({
       await squadService.getConnection().confirmTransaction(txid);
 
       toast.success("Proposal rejected!");
+      squadService.invalidateProposalCache(selectedMultisig.publicKey);
       await loadProposals();
     } catch (error) {
       console.error("Failed to reject proposal:", error);
@@ -288,6 +304,7 @@ export function ProposalList({
       await squadService.getConnection().confirmTransaction(txid);
 
       toast.success("Proposal executed!");
+      squadService.invalidateProposalCache(selectedMultisig.publicKey);
       await loadProposals();
     } catch (error) {
       console.error("Failed to execute proposal:", error);
