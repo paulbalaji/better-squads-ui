@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, LogOut, Wallet } from "lucide-react";
+import { Copy, Globe, LogOut, Usb, Wallet } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -13,20 +13,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ledgerService } from "@/lib/ledger";
+import { useWalletDisconnect } from "@/lib/hooks/use-wallet-disconnect";
 import { useWalletStore } from "@/stores/wallet-store";
 
+import { BrowserWalletDialog } from "./browser-wallet-dialog";
 import { WalletConnectDialog } from "./wallet-connect-dialog";
 
-export function WalletButton() {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const { connected, publicKey, disconnect } = useWalletStore();
+type DialogType = "ledger" | "browser" | null;
 
-  const handleDisconnect = async () => {
-    await ledgerService.disconnect();
-    disconnect();
-    toast.success("Wallet disconnected");
-  };
+export function WalletButton() {
+  const [dialogOpen, setDialogOpen] = useState<DialogType>(null);
+  const { connected, publicKey, walletName } = useWalletStore();
+  const { disconnect } = useWalletDisconnect();
 
   const handleCopyAddress = () => {
     if (publicKey) {
@@ -38,11 +36,35 @@ export function WalletButton() {
   if (!connected || !publicKey) {
     return (
       <>
-        <Button onClick={() => setDialogOpen(true)} variant="default">
-          <Wallet className="mr-2 h-4 w-4" />
-          Connect Wallet
-        </Button>
-        <WalletConnectDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="default">
+              <Wallet className="mr-2 h-4 w-4" />
+              Connect Wallet
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Select Wallet Type</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setDialogOpen("browser")}>
+              <Globe className="mr-2 h-4 w-4" />
+              Browser Wallet
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDialogOpen("ledger")}>
+              <Usb className="mr-2 h-4 w-4" />
+              Ledger Device
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <WalletConnectDialog
+          open={dialogOpen === "ledger"}
+          onOpenChange={(open) => setDialogOpen(open ? "ledger" : null)}
+        />
+        <BrowserWalletDialog
+          open={dialogOpen === "browser"}
+          onOpenChange={(open) => setDialogOpen(open ? "browser" : null)}
+        />
       </>
     );
   }
@@ -57,14 +79,16 @@ export function WalletButton() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Connected Wallet</DropdownMenuLabel>
+        <DropdownMenuLabel>
+          {walletName ? `Connected: ${walletName}` : "Connected Wallet"}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleCopyAddress}>
           <Copy className="mr-2 h-4 w-4" />
           Copy Address
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleDisconnect}>
+        <DropdownMenuItem onClick={disconnect}>
           <LogOut className="mr-2 h-4 w-4" />
           Disconnect
         </DropdownMenuItem>

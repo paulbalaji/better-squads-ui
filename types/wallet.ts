@@ -1,9 +1,16 @@
 import type { PublicKey } from "@solana/web3.js";
 
+export enum WalletType {
+  LEDGER = "ledger",
+  BROWSER = "browser",
+}
+
 export interface WalletState {
   connected: boolean;
   publicKey: PublicKey | null;
-  derivationPath: string;
+  walletType: WalletType | null;
+  walletName?: string;
+  derivationPath?: string;
   deviceModel?: string;
 }
 

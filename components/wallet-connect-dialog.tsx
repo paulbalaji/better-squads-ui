@@ -38,20 +38,22 @@ interface WalletConnectDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+type Step = "connect" | "select";
+
 export function WalletConnectDialog({
   open,
   onOpenChange,
 }: WalletConnectDialogProps) {
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<LedgerAccount[]>([]);
-  const [step, setStep] = useState<"connect" | "select">("connect");
+  const [step, setStep] = useState<Step>("connect");
   const [currentPage, setCurrentPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [pathType, setPathType] = useState<DerivationPathType>(
     DerivationPathType.BIP44_CHANGE
   );
 
-  const { connect } = useWalletStore();
+  const { connectLedger } = useWalletStore();
   const { getSelectedChain } = useChainStore();
 
   const loadAccounts = async (page: number) => {
@@ -72,14 +74,14 @@ export function WalletConnectDialog({
   const handleConnect = async () => {
     setLoading(true);
     setError(null);
+
     try {
       await ledgerService.connect();
       await loadAccounts(0);
       setStep("select");
       toast.success("Ledger connected successfully");
-    } catch (error) {
-      console.error("Failed to connect Ledger:", error);
-      const errorMessage = parseLedgerError(error);
+    } catch (err) {
+      const errorMessage = parseLedgerError(err);
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -89,32 +91,35 @@ export function WalletConnectDialog({
 
   const handlePageChange = async (newPage: number) => {
     setLoading(true);
+
     try {
       await loadAccounts(newPage);
       setCurrentPage(newPage);
-    } catch (error) {
-      console.error("Failed to load accounts:", error);
-      toast.error(parseLedgerError(error));
+    } catch (err) {
+      toast.error(parseLedgerError(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleSelectAccount = (account: LedgerAccount) => {
-    connect(account.publicKey, account.derivationPath, "Ledger");
+    connectLedger(account.publicKey, account.derivationPath, "Ledger");
     onOpenChange(false);
-    setStep("connect");
-    setAccounts([]);
+    resetDialog();
     toast.success("Wallet connected");
   };
 
-  const handleClose = () => {
-    onOpenChange(false);
+  const resetDialog = () => {
     setStep("connect");
     setAccounts([]);
     setCurrentPage(0);
     setError(null);
     setPathType(DerivationPathType.BIP44_CHANGE);
+  };
+
+  const handleClose = () => {
+    onOpenChange(false);
+    resetDialog();
   };
 
   return (
@@ -130,137 +135,181 @@ export function WalletConnectDialog({
         </DialogHeader>
 
         {step === "connect" && (
-          <div className="flex flex-col gap-6 py-8">
-            <div className="flex flex-col items-center gap-6">
-              <div
-                className={`flex h-20 w-20 items-center justify-center rounded-full ${
-                  error ? "bg-destructive/10" : "bg-primary/10"
-                }`}
-              >
-                {error ? (
-                  <AlertCircle className="text-destructive h-10 w-10" />
-                ) : (
-                  <Usb className="text-primary h-10 w-10" />
-                )}
-              </div>
-              <div className="text-center">
-                <h3 className="font-semibold">
-                  {error ? "Connection Failed" : "Connect Your Ledger"}
-                </h3>
-                <p className="text-muted-foreground mt-2 text-sm">
-                  {error ||
-                    "Make sure your Ledger device is unlocked and the Solana app is open"}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label>Derivation Path</Label>
-              <RadioGroup
-                value={pathType}
-                onValueChange={(value) =>
-                  setPathType(value as DerivationPathType)
-                }
-                disabled={loading}
-              >
-                {Object.entries(DERIVATION_PATH_PATTERNS).map(
-                  ([key, pattern]) => (
-                    <div key={key} className="flex items-center space-x-2">
-                      <RadioGroupItem value={key} id={key} disabled={loading} />
-                      <Label htmlFor={key} className="font-normal">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{pattern.name}</span>
-                          <span className="text-muted-foreground text-xs">
-                            {pattern.description}
-                          </span>
-                        </div>
-                      </Label>
-                    </div>
-                  )
-                )}
-              </RadioGroup>
-            </div>
-
-            <Button
-              onClick={handleConnect}
-              disabled={loading}
-              className="w-full"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Connecting...
-                </>
-              ) : error ? (
-                "Try Again"
-              ) : (
-                "Connect Ledger"
-              )}
-            </Button>
-          </div>
+          <ConnectStep
+            loading={loading}
+            error={error}
+            pathType={pathType}
+            onPathTypeChange={setPathType}
+            onConnect={handleConnect}
+          />
         )}
 
         {step === "select" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground text-sm">
-                Page {currentPage + 1}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 0 || loading}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={loading}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {accounts.map((account, index) => (
-                <button
-                  key={account.derivationPath}
-                  onClick={() => handleSelectAccount(account)}
-                  className="hover:bg-accent flex w-full items-center justify-between rounded-lg border p-4 text-left transition-colors"
-                  disabled={loading}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm">
-                        {account.publicKey.toString().slice(0, 8)}...
-                        {account.publicKey.toString().slice(-8)}
-                      </span>
-                      <Badge variant="outline">
-                        Account {currentPage * ACCOUNTS_PER_PAGE + index + 1}
-                      </Badge>
-                    </div>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {account.derivationPath}
-                    </p>
-                  </div>
-                  {account.balance !== undefined && (
-                    <div className="text-right">
-                      <p className="font-semibold">
-                        {account.balance.toFixed(4)} SOL
-                      </p>
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
+          <SelectStep
+            loading={loading}
+            accounts={accounts}
+            currentPage={currentPage}
+            onPageChange={handlePageChange}
+            onSelectAccount={handleSelectAccount}
+          />
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface ConnectStepProps {
+  loading: boolean;
+  error: string | null;
+  pathType: DerivationPathType;
+  onPathTypeChange: (type: DerivationPathType) => void;
+  onConnect: () => void;
+}
+
+function ConnectStep({
+  loading,
+  error,
+  pathType,
+  onPathTypeChange,
+  onConnect,
+}: ConnectStepProps) {
+  return (
+    <div className="flex flex-col gap-6 py-8">
+      <div className="flex flex-col items-center gap-6">
+        <div
+          className={`flex h-20 w-20 items-center justify-center rounded-full ${
+            error ? "bg-destructive/10" : "bg-primary/10"
+          }`}
+        >
+          {error ? (
+            <AlertCircle className="text-destructive h-10 w-10" />
+          ) : (
+            <Usb className="text-primary h-10 w-10" />
+          )}
+        </div>
+        <div className="text-center">
+          <h3 className="font-semibold">
+            {error ? "Connection Failed" : "Connect Your Ledger"}
+          </h3>
+          <p className="text-muted-foreground mt-2 text-sm">
+            {error ||
+              "Make sure your Ledger device is unlocked and the Solana app is open"}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <Label>Derivation Path</Label>
+        <RadioGroup
+          value={pathType}
+          onValueChange={(value) =>
+            onPathTypeChange(value as DerivationPathType)
+          }
+          disabled={loading}
+        >
+          {Object.entries(DERIVATION_PATH_PATTERNS).map(([key, pattern]) => (
+            <div key={key} className="flex items-center space-x-2">
+              <RadioGroupItem value={key} id={key} disabled={loading} />
+              <Label htmlFor={key} className="font-normal">
+                <div className="flex flex-col">
+                  <span className="font-medium">{pattern.name}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {pattern.description}
+                  </span>
+                </div>
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
+      </div>
+
+      <Button onClick={onConnect} disabled={loading} className="w-full">
+        {loading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Connecting...
+          </>
+        ) : error ? (
+          "Try Again"
+        ) : (
+          "Connect Ledger"
+        )}
+      </Button>
+    </div>
+  );
+}
+
+interface SelectStepProps {
+  loading: boolean;
+  accounts: LedgerAccount[];
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  onSelectAccount: (account: LedgerAccount) => void;
+}
+
+function SelectStep({
+  loading,
+  accounts,
+  currentPage,
+  onPageChange,
+  onSelectAccount,
+}: SelectStepProps) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-muted-foreground text-sm">Page {currentPage + 1}</p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 0 || loading}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={loading}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {accounts.map((account, index) => (
+          <button
+            key={account.derivationPath}
+            onClick={() => onSelectAccount(account)}
+            disabled={loading}
+            className="hover:bg-accent flex w-full items-center justify-between rounded-lg border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm">
+                  {account.publicKey.toString().slice(0, 8)}...
+                  {account.publicKey.toString().slice(-8)}
+                </span>
+                <Badge variant="outline">
+                  Account {currentPage * ACCOUNTS_PER_PAGE + index + 1}
+                </Badge>
+              </div>
+              <p className="text-muted-foreground mt-1 text-xs">
+                {account.derivationPath}
+              </p>
+            </div>
+            {account.balance !== undefined && (
+              <div className="text-right">
+                <p className="font-semibold">
+                  {account.balance.toFixed(4)} SOL
+                </p>
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

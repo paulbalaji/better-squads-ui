@@ -91,8 +91,8 @@ export class LedgerService {
             balance,
           });
         }
-      } catch (error) {
-        console.error(`Failed to get account for path ${path}:`, error);
+      } catch {
+        // Skip accounts that fail to load
       }
     }
 

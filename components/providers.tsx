@@ -7,6 +7,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { useChainStore } from "@/stores/chain-store";
 import { useMultisigStore } from "@/stores/multisig-store";
 
+import { WalletAdapterProvider } from "./wallet-adapter-provider";
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const initializeChains = useChainStore((state) => state.initializeChains);
   const initializeMultisigs = useMultisigStore(
@@ -20,8 +22,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      {children}
-      <Toaster />
+      <WalletAdapterProvider>
+        {children}
+        <Toaster />
+      </WalletAdapterProvider>
     </ThemeProvider>
   );
 }

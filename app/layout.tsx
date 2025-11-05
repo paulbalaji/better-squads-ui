@@ -5,6 +5,7 @@ import { Header } from "@/components/header";
 import { Providers } from "@/components/providers";
 
 import "./globals.css";
+import "./wallet-adapter.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
