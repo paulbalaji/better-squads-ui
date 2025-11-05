@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 import { ChainManagementDialog } from "./chain-management-dialog";
+import { ExportImportDialog } from "./export-import-dialog";
 import { ThemeToggle } from "./theme-toggle";
 import { WalletButton } from "./wallet-button";
 
@@ -37,6 +38,7 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
+          <ExportImportDialog />
           <ThemeToggle />
           <Button
             variant="ghost"
