@@ -1,0 +1,297 @@
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import * as multisig from "@sqds/multisig";
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export class SquadService {
+  private connection: Connection;
+  private programId: PublicKey;
+
+  constructor(rpcUrl: string, programId: string) {
+    this.connection = new Connection(rpcUrl, "confirmed");
+    this.programId = new PublicKey(programId);
+  }
+
+  updateConnection(rpcUrl: string, programId: string) {
+    this.connection = new Connection(rpcUrl, "confirmed");
+    this.programId = new PublicKey(programId);
+  }
+
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    operationName: string
+  ): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+
+        // Check for rate limit or 403 errors
+        if (errorMessage.includes("403") || errorMessage.includes("429")) {
+          if (attempt < MAX_RETRIES) {
+            const delay = RETRY_DELAY * Math.pow(2, attempt - 1);
+            console.warn(
+              `${operationName} failed (attempt ${attempt}/${MAX_RETRIES}), retrying in ${delay}ms...`
+            );
+            await sleep(delay);
+            continue;
+          }
+
+          throw new Error(
+            `RPC rate limit exceeded. Please try again later or configure a custom RPC endpoint with higher limits (e.g., Helius, QuickNode, Alchemy).`
+          );
+        }
+
+        // For other errors, don't retry
+        throw error;
+      }
+    }
+
+    throw (
+      lastError ||
+      new Error(`${operationName} failed after ${MAX_RETRIES} attempts`)
+    );
+  }
+
+  async createMultisig(params: {
+    creator: PublicKey;
+    threshold: number;
+    members: { key: PublicKey; permissions: { mask: number } }[];
+    timeLock?: number;
+  }) {
+    const createKey = Keypair.generate();
+
+    const [multisigPda] = multisig.getMultisigPda({
+      createKey: createKey.publicKey,
+      programId: this.programId,
+    });
+
+    const instruction = multisig.instructions.multisigCreate({
+      createKey: createKey.publicKey,
+      creator: params.creator,
+      multisigPda,
+      configAuthority: null,
+      timeLock: params.timeLock || 0,
+      threshold: params.threshold,
+      members: params.members,
+      programId: this.programId,
+    });
+
+    return {
+      multisigPda,
+      createKey,
+      instruction,
+    };
+  }
+
+  async getMultisig(multisigPda: PublicKey) {
+    return await this.retryWithBackoff(async () => {
+      // First check if account exists and owner matches
+      const accountInfo = await this.connection.getAccountInfo(multisigPda);
+
+      if (!accountInfo) {
+        throw new Error(
+          "Account not found. Please verify the address and selected network."
+        );
+      }
+
+      if (!accountInfo.owner.equals(this.programId)) {
+        const owner = accountInfo.owner.toBase58();
+
+        // System Program owner indicates this is likely a Squads V3 multisig
+        if (owner === "11111111111111111111111111111111") {
+          throw new Error(
+            "This is a Squads V3 multisig. This app only supports Squads V4. Please use the legacy Squads interface at v3.squads.so"
+          );
+        }
+
+        throw new Error(
+          `Account is not owned by the Squads V4 program. Owner: ${owner}`
+        );
+      }
+
+      // Now try to deserialize
+      try {
+        return await multisig.accounts.Multisig.fromAccountAddress(
+          this.connection,
+          multisigPda
+        );
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("COption") || errorMsg.includes("deserialize")) {
+          throw new Error(
+            "Invalid multisig account format. This may be a Squads V3 multisig or corrupted data."
+          );
+        }
+        throw error;
+      }
+    }, "Get multisig");
+  }
+
+  async getMultisigsByCreator(creator: PublicKey) {
+    const multisigs = await this.retryWithBackoff(
+      () =>
+        this.connection.getProgramAccounts(this.programId, {
+          filters: [
+            {
+              memcmp: {
+                offset: 8,
+                bytes: creator.toBase58(),
+              },
+            },
+          ],
+        }),
+      "Get multisigs by creator"
+    );
+
+    return multisigs.map((account) => ({
+      publicKey: account.pubkey,
+      account: multisig.accounts.Multisig.fromAccountInfo(account.account)[0],
+    }));
+  }
+
+  async createProposal(params: {
+    multisigPda: PublicKey;
+    creator: PublicKey;
+    transactionIndex: bigint;
+  }) {
+    const [proposalPda] = multisig.getProposalPda({
+      multisigPda: params.multisigPda,
+      transactionIndex: params.transactionIndex,
+      programId: this.programId,
+    });
+
+    const instruction = multisig.instructions.proposalCreate({
+      multisigPda: params.multisigPda,
+      transactionIndex: params.transactionIndex,
+      creator: params.creator,
+      programId: this.programId,
+    });
+
+    return {
+      proposalPda,
+      instruction,
+    };
+  }
+
+  async approveProposal(params: {
+    multisigPda: PublicKey;
+    transactionIndex: bigint;
+    member: PublicKey;
+  }) {
+    return multisig.instructions.proposalApprove({
+      multisigPda: params.multisigPda,
+      transactionIndex: params.transactionIndex,
+      member: params.member,
+      programId: this.programId,
+    });
+  }
+
+  async rejectProposal(params: {
+    multisigPda: PublicKey;
+    transactionIndex: bigint;
+    member: PublicKey;
+  }) {
+    return multisig.instructions.proposalReject({
+      multisigPda: params.multisigPda,
+      transactionIndex: params.transactionIndex,
+      member: params.member,
+      programId: this.programId,
+    });
+  }
+
+  async executeProposal(params: {
+    multisigPda: PublicKey;
+    transactionIndex: bigint;
+    member: PublicKey;
+  }) {
+    return multisig.instructions.vaultTransactionExecute({
+      connection: this.connection,
+      multisigPda: params.multisigPda,
+      transactionIndex: params.transactionIndex,
+      member: params.member,
+      programId: this.programId,
+    });
+  }
+
+  async getProposal(multisigPda: PublicKey, transactionIndex: bigint) {
+    const [proposalPda] = multisig.getProposalPda({
+      multisigPda,
+      transactionIndex,
+      programId: this.programId,
+    });
+
+    return await this.retryWithBackoff(
+      () =>
+        multisig.accounts.Proposal.fromAccountAddress(
+          this.connection,
+          proposalPda
+        ),
+      "Get proposal"
+    );
+  }
+
+  async getProposalsByMultisig(multisigPda: PublicKey) {
+    const proposals = await this.retryWithBackoff(
+      () =>
+        this.connection.getProgramAccounts(this.programId, {
+          filters: [
+            {
+              memcmp: {
+                offset: 8,
+                bytes: multisigPda.toBase58(),
+              },
+            },
+          ],
+        }),
+      "Get proposals by multisig"
+    );
+
+    return proposals
+      .map((account) => {
+        try {
+          const [proposalAccount] = multisig.accounts.Proposal.fromAccountInfo(
+            account.account
+          );
+          return {
+            publicKey: account.pubkey,
+            account: proposalAccount,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((p) => p !== null);
+  }
+
+  async getVaultTransaction(multisigPda: PublicKey, transactionIndex: bigint) {
+    const [transactionPda] = multisig.getTransactionPda({
+      multisigPda,
+      index: transactionIndex,
+      programId: this.programId,
+    });
+
+    return await this.retryWithBackoff(
+      () =>
+        multisig.accounts.VaultTransaction.fromAccountAddress(
+          this.connection,
+          transactionPda
+        ),
+      "Get vault transaction"
+    );
+  }
+
+  getConnection(): Connection {
+    return this.connection;
+  }
+}
