@@ -264,11 +264,16 @@ export function ChainManagementDialog({
                   key={chain.id}
                   className="flex items-center justify-between rounded-lg border p-3"
                 >
-                  <div className="flex-1">
+                  <div className="flex-1 space-y-1">
                     <p className="font-medium">{chain.name}</p>
                     <p className="text-muted-foreground text-xs">
-                      {chain.rpcUrl}
+                      RPC: {chain.rpcUrl}
                     </p>
+                    {chain.explorerUrl && (
+                      <p className="text-muted-foreground text-xs">
+                        Explorer: {chain.explorerUrl}
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-1">
                     <Button

@@ -1,6 +1,7 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Copy, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,14 +52,14 @@ export function MultisigSidebar({ onRefresh, loading }: MultisigSidebarProps) {
               selectedMultisigKey === multisig.publicKey.toString();
 
             return (
-              <button
+              <div
                 key={multisig.publicKey.toString()}
                 onClick={() => selectMultisig(multisig.publicKey.toString())}
                 className={cn(
-                  "w-full rounded-lg border p-3 text-left transition-colors",
+                  "w-full cursor-pointer rounded-lg border p-3 text-left transition-colors",
                   isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50 hover:bg-accent"
+                    ? "border-primary bg-primary/10"
+                    : "hover:bg-accent/50"
                 )}
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
@@ -66,10 +67,22 @@ export function MultisigSidebar({ onRefresh, loading }: MultisigSidebarProps) {
                     <p className="truncate text-sm font-medium">
                       {multisig.label || "Unnamed"}
                     </p>
-                    <p className="text-muted-foreground truncate font-mono text-xs">
-                      {multisig.publicKey.toString().slice(0, 6)}...
-                      {multisig.publicKey.toString().slice(-4)}
-                    </p>
+                    <div className="flex items-center gap-0.5">
+                      <p className="text-muted-foreground truncate font-mono text-xs">
+                        {multisig.publicKey.toString().slice(0, 6)}...
+                        {multisig.publicKey.toString().slice(-4)}
+                      </p>
+                      <Copy
+                        className="text-muted-foreground hover:text-foreground h-2.5 w-2.5 shrink-0 cursor-pointer transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(
+                            multisig.publicKey.toString()
+                          );
+                          toast.success("Address copied");
+                        }}
+                      />
+                    </div>
                   </div>
                   <Badge variant="secondary" className="shrink-0 text-xs">
                     {multisig.threshold}/{multisig.members.length}
@@ -79,7 +92,7 @@ export function MultisigSidebar({ onRefresh, loading }: MultisigSidebarProps) {
                   {chains.find((c) => c.id === multisig.chainId)?.name ||
                     multisig.chainId}
                 </Badge>
-              </button>
+              </div>
             );
           })}
         </div>

@@ -281,14 +281,57 @@ export class SquadService {
       programId: this.programId,
     });
 
-    return await this.retryWithBackoff(
-      () =>
-        multisig.accounts.VaultTransaction.fromAccountAddress(
+    return await this.retryWithBackoff(async () => {
+      // First check if account exists
+      const accountInfo = await this.connection.getAccountInfo(transactionPda);
+
+      if (!accountInfo) {
+        throw new Error(
+          "Transaction not found. The transaction may not have been created yet."
+        );
+      }
+
+      if (!accountInfo.owner.equals(this.programId)) {
+        throw new Error("Invalid transaction account owner");
+      }
+
+      try {
+        return await multisig.accounts.VaultTransaction.fromAccountAddress(
           this.connection,
           transactionPda
-        ),
-      "Get vault transaction"
-    );
+        );
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("buffer") || errorMsg.includes("offset")) {
+          throw new Error(
+            "Invalid transaction data format. The transaction may be corrupted or incomplete."
+          );
+        }
+        throw error;
+      }
+    }, "Get vault transaction");
+  }
+
+  async getVaultTransactionRaw(
+    multisigPda: PublicKey,
+    transactionIndex: bigint
+  ) {
+    const [transactionPda] = multisig.getTransactionPda({
+      multisigPda,
+      index: transactionIndex,
+      programId: this.programId,
+    });
+
+    return await this.retryWithBackoff(async () => {
+      const accountInfo = await this.connection.getAccountInfo(transactionPda);
+      if (!accountInfo) {
+        throw new Error("Transaction account not found");
+      }
+      return {
+        pda: transactionPda,
+        data: accountInfo.data,
+      };
+    }, "Get vault transaction raw");
   }
 
   getConnection(): Connection {

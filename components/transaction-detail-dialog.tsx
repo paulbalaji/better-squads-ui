@@ -1,5 +1,8 @@
 "use client";
 
+import { Connection, PublicKey } from "@solana/web3.js";
+import * as multisig from "@sqds/multisig";
+import bs58 from "bs58";
 import { Copy, ExternalLink, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -14,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { SquadService } from "@/lib/squad";
 import { useChainStore } from "@/stores/chain-store";
 import type { ProposalAccount } from "@/types/multisig";
 
@@ -35,14 +37,23 @@ interface VaultTransactionData {
   };
 }
 
+interface ConfigTransactionData {
+  actions: unknown[];
+}
+
 export function TransactionDetailDialog({
   open,
   onOpenChange,
   proposal,
 }: TransactionDetailDialogProps) {
   const { chains } = useChainStore();
+  const [transactionPda, setTransactionPda] = useState<string | null>(null);
   const [txData, setTxData] = useState<VaultTransactionData | null>(null);
-  const [txLoading, setTxLoading] = useState(false);
+  const [configData, setConfigData] = useState<ConfigTransactionData | null>(
+    null
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadTransactionData() {
@@ -52,42 +63,67 @@ export function TransactionDetailDialog({
       const { multisigs } = await import("@/stores/multisig-store").then((m) =>
         m.useMultisigStore.getState()
       );
-      const multisig = multisigs.find(
+      const multisigAccount = multisigs.find(
         (m) => m.publicKey.toString() === proposal.multisig.toString()
       );
 
-      if (!multisig) {
+      if (!multisigAccount) {
         console.error("Multisig not found for proposal");
         return;
       }
 
-      const chain = chains.find((c) => c.id === multisig.chainId);
+      const chain = chains.find((c) => c.id === multisigAccount.chainId);
       if (!chain) {
         console.error("Chain configuration not found");
         return;
       }
 
-      setTxLoading(true);
+      const [txPda] = multisig.getTransactionPda({
+        multisigPda: proposal.multisig,
+        index: proposal.transactionIndex,
+        programId: new PublicKey(chain.squadsV4ProgramId),
+      });
+
+      setTransactionPda(txPda.toString());
+
+      // Try to load transaction data
+      setLoading(true);
+      setError(null);
       setTxData(null);
+      setConfigData(null);
 
       try {
-        const squadService = new SquadService(
-          chain.rpcUrl,
-          chain.squadsV4ProgramId
-        );
+        const connection = new Connection(chain.rpcUrl, "confirmed");
 
-        const vaultTx = await squadService.getVaultTransaction(
-          proposal.multisig,
-          proposal.transactionIndex
-        );
+        // Try ConfigTransaction first (typically smaller, 119 bytes)
+        try {
+          const configTx =
+            await multisig.accounts.ConfigTransaction.fromAccountAddress(
+              connection,
+              txPda
+            );
+
+          setConfigData({
+            actions: configTx.actions,
+          });
+          return;
+        } catch {
+          // Not a ConfigTransaction, try VaultTransaction
+        }
+
+        // Try VaultTransaction
+        const transactionAccount =
+          await multisig.accounts.VaultTransaction.fromAccountAddress(
+            connection,
+            txPda
+          );
 
         const txData: VaultTransactionData = {
           message: {
-            accountKeys: vaultTx.message.accountKeys.map((key) =>
+            accountKeys: transactionAccount.message.accountKeys.map((key) =>
               key.toString()
             ),
-            instructions: vaultTx.message.instructions.map((ix) => {
-              // accountIndexes is a Uint8Array, convert to array
+            instructions: transactionAccount.message.instructions.map((ix) => {
               const accountIndexes = Array.isArray(ix.accountIndexes)
                 ? ix.accountIndexes
                 : Array.from(ix.accountIndexes);
@@ -95,18 +131,21 @@ export function TransactionDetailDialog({
               return {
                 programIdIndex: ix.programIdIndex,
                 accountKeyIndexes: accountIndexes,
-                data: Buffer.from(ix.data).toString("base64"),
+                data: bs58.encode(ix.data),
               };
             }),
           },
         };
 
         setTxData(txData);
-      } catch (error) {
-        console.error("Failed to load transaction data:", error);
-        toast.error("Failed to load transaction details");
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Transaction data not available. The transaction may not have been created yet.";
+        setError(errorMessage);
       } finally {
-        setTxLoading(false);
+        setLoading(false);
       }
     }
 
@@ -138,9 +177,9 @@ export function TransactionDetailDialog({
   };
 
   const handleCopyTxData = () => {
-    if (!txData) return;
-
-    navigator.clipboard.writeText(JSON.stringify(txData, null, 2));
+    const dataToCopy = txData || configData;
+    if (!dataToCopy) return;
+    navigator.clipboard.writeText(JSON.stringify(dataToCopy, null, 2));
     toast.success("Transaction data copied to clipboard");
   };
 
@@ -150,16 +189,16 @@ export function TransactionDetailDialog({
     const { multisigs } = await import("@/stores/multisig-store").then((m) =>
       m.useMultisigStore.getState()
     );
-    const multisig = multisigs.find(
+    const multisigAccount = multisigs.find(
       (m) => m.publicKey.toString() === proposal.multisig.toString()
     );
 
-    if (!multisig) {
+    if (!multisigAccount) {
       toast.error("Multisig not found");
       return;
     }
 
-    const chain = chains.find((c) => c.id === multisig.chainId);
+    const chain = chains.find((c) => c.id === multisigAccount.chainId);
     if (!chain?.explorerUrl) {
       toast.error("Explorer URL not configured for this chain");
       return;
@@ -283,10 +322,33 @@ export function TransactionDetailDialog({
 
           <Separator />
 
+          {transactionPda && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Transaction PDA</h3>
+              <div className="flex items-center gap-2">
+                <code className="bg-muted flex-1 rounded px-3 py-2 text-xs">
+                  {transactionPda}
+                </code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    navigator.clipboard.writeText(transactionPda);
+                    toast.success("Transaction PDA copied");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Transaction Data</h3>
-              {txData && (
+              <h3 className="text-sm font-semibold">
+                {configData ? "Config Transaction Data" : "Transaction Data"}
+              </h3>
+              {(txData || configData) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -299,19 +361,49 @@ export function TransactionDetailDialog({
               )}
             </div>
 
-            {txLoading && (
+            {loading && (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
               </div>
             )}
 
-            {!txLoading && !txData && (
-              <div className="bg-muted text-muted-foreground rounded px-3 py-4 text-center text-sm">
-                No transaction data available
+            {!loading && error && (
+              <div className="bg-muted text-muted-foreground rounded px-3 py-4 text-sm">
+                <p className="text-xs">{error}</p>
               </div>
             )}
 
-            {!txLoading && txData && (
+            {!loading && configData && (
+              <div className="space-y-3">
+                <div className="bg-muted rounded px-3 py-4 text-sm">
+                  <p className="mb-2 font-semibold">
+                    Config Transaction (Multisig Configuration Change)
+                  </p>
+                  <p className="text-muted-foreground mb-3 text-xs">
+                    This transaction modifies the multisig configuration.
+                  </p>
+                  <div>
+                    <p className="text-muted-foreground mb-2 text-xs font-medium">
+                      Actions ({configData.actions.length})
+                    </p>
+                    <div className="bg-background max-h-96 space-y-2 overflow-y-auto rounded p-2">
+                      {configData.actions.map((action, index) => (
+                        <div key={index} className="bg-muted rounded p-2">
+                          <p className="mb-1 text-xs font-semibold">
+                            Action {index + 1}
+                          </p>
+                          <pre className="overflow-x-auto text-xs">
+                            {JSON.stringify(action, null, 2)}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!loading && txData && (
               <div className="space-y-3">
                 <div>
                   <p className="text-muted-foreground mb-2 text-xs font-medium">
@@ -334,36 +426,62 @@ export function TransactionDetailDialog({
                     Instructions ({txData.message.instructions.length})
                   </p>
                   <div className="space-y-2">
-                    {txData.message.instructions.map((ix, index) => (
-                      <div key={index} className="bg-muted rounded p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="text-xs font-semibold">
-                            Instruction {index + 1}
-                          </span>
-                          <Badge variant="secondary" className="text-xs">
-                            Program: {ix.programIdIndex}
-                          </Badge>
-                        </div>
-                        <div className="space-y-1 text-xs">
-                          <div>
-                            <span className="text-muted-foreground">
-                              Accounts:{" "}
+                    {txData.message.instructions.map((ix, index) => {
+                      const programAddress =
+                        txData.message.accountKeys[ix.programIdIndex];
+                      return (
+                        <div key={index} className="bg-muted rounded p-3">
+                          <div className="mb-2 space-y-2">
+                            <span className="text-xs font-semibold">
+                              Instruction {index + 1}
                             </span>
-                            <code className="text-xs">
-                              [{ix.accountKeyIndexes.join(", ")}]
-                            </code>
+                            <div>
+                              <span className="text-muted-foreground text-xs">
+                                Program: {ix.programIdIndex}
+                              </span>
+                              <code className="block text-xs break-all">
+                                {programAddress}
+                              </code>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              Data:{" "}
-                            </span>
-                            <code className="block text-xs break-all">
-                              {ix.data}
-                            </code>
+
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <span className="text-muted-foreground">
+                                Accounts:{" "}
+                              </span>
+                              <code className="text-xs">
+                                [{ix.accountKeyIndexes.join(", ")}]
+                              </code>
+                            </div>
+                            {ix.accountKeyIndexes.length > 0 && (
+                              <div className="mt-1 ml-4 space-y-1">
+                                {ix.accountKeyIndexes.map(
+                                  (accIdx: number, i: number) => (
+                                    <div key={i} className="text-xs">
+                                      <span className="text-muted-foreground">
+                                        [{i}]:{" "}
+                                      </span>
+                                      <code className="text-xs break-all">
+                                        {txData.message.accountKeys[accIdx]}
+                                      </code>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-muted-foreground">
+                                Data (base58):{" "}
+                              </span>
+                              <code className="block text-xs break-all">
+                                {ix.data}
+                              </code>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>

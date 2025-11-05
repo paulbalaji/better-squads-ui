@@ -1,7 +1,7 @@
 "use client";
 
 import { PublicKey } from "@solana/web3.js";
-import { Loader2, Pencil, RefreshCw, Trash2, Users } from "lucide-react";
+import { Copy, Loader2, Pencil, RefreshCw, Trash2, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -270,9 +270,21 @@ export function MultisigList() {
                   </Badge>
                 </CardTitle>
                 <CardDescription className="space-y-1">
-                  <div className="truncate font-mono text-xs">
-                    {multisig.publicKey.toString().slice(0, 8)}...
-                    {multisig.publicKey.toString().slice(-8)}
+                  <div className="flex items-center gap-0.5">
+                    <div className="truncate font-mono text-xs">
+                      {multisig.publicKey.toString().slice(0, 8)}...
+                      {multisig.publicKey.toString().slice(-8)}
+                    </div>
+                    <Copy
+                      className="text-muted-foreground hover:text-foreground h-2.5 w-2.5 shrink-0 cursor-pointer transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(
+                          multisig.publicKey.toString()
+                        );
+                        toast.success("Address copied");
+                      }}
+                    />
                   </div>
                   <Badge variant="outline" className="text-xs">
                     {chains.find((c) => c.id === multisig.chainId)?.name ||

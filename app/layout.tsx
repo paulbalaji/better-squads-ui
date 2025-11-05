@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Squad Multisig",
+  title: "Squad²",
   description: "Multisig wallet for Solana and SVM chains",
 };
 

@@ -15,10 +15,10 @@ export function Header() {
 
   return (
     <header className="border-b">
-      <div className="container mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
+      <div className="container mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6 md:px-8">
         <div className="flex items-center gap-8">
           <Link href="/" className="text-xl font-bold">
-            Squad Multisig
+            Squad<sup>2</sup>
           </Link>
           <nav className="hidden gap-6 md:flex">
             <Link

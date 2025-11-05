@@ -1,7 +1,7 @@
 "use client";
 
 import { Transaction } from "@solana/web3.js";
-import { Check, Eye, Loader2, RefreshCw, X } from "lucide-react";
+import { Check, Copy, Eye, Loader2, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -14,6 +14,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ledgerService } from "@/lib/ledger";
 import { SquadService } from "@/lib/squad";
 import { useChainStore } from "@/stores/chain-store";
@@ -298,11 +304,28 @@ export function ProposalList({
         <div>
           <h2 className="text-2xl font-bold">Proposals</h2>
           {selectedMultisig && (
-            <p className="text-muted-foreground text-sm">
-              {selectedMultisig.label || "Unnamed"} (
-              {selectedMultisig.publicKey.toString().slice(0, 6)}...
-              {selectedMultisig.publicKey.toString().slice(-4)})
-            </p>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-muted-foreground text-sm">
+                {selectedMultisig.label || "Unnamed"} ·{" "}
+                {chains.find((c) => c.id === selectedMultisig.chainId)?.name ||
+                  "Unknown Chain"}
+              </p>
+              <div className="flex items-center gap-1">
+                <p className="text-muted-foreground text-sm">
+                  {selectedMultisig.publicKey.toString().slice(0, 6)}...
+                  {selectedMultisig.publicKey.toString().slice(-4)}
+                </p>
+                <Copy
+                  className="text-muted-foreground hover:text-foreground h-3 w-3 cursor-pointer transition-colors"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      selectedMultisig.publicKey.toString()
+                    );
+                    toast.success("Address copied");
+                  }}
+                />
+              </div>
+            </div>
           )}
         </div>
         <Button
@@ -345,18 +368,55 @@ export function ProposalList({
               const hasMetThreshold =
                 selectedMultisig && approvalCount >= selectedMultisig.threshold;
 
+              // Check if current user has already approved or rejected
+              const currentUserApproved = publicKey
+                ? proposal.approvals.some(
+                    (approver) => approver.toString() === publicKey.toString()
+                  )
+                : false;
+
+              const currentUserRejected = publicKey
+                ? proposal.rejections.some(
+                    (rejector) => rejector.toString() === publicKey.toString()
+                  )
+                : false;
+
               return (
                 <Card key={proposal.transactionIndex.toString()}>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
-                      <span>
-                        Proposal #{proposal.transactionIndex.toString()}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span>
+                          Proposal #{proposal.transactionIndex.toString()}
+                        </span>
+                        {currentUserApproved && (
+                          <Badge variant="default" className="bg-green-600">
+                            Approved
+                          </Badge>
+                        )}
+                        {currentUserRejected && (
+                          <Badge variant="destructive">Rejected</Badge>
+                        )}
+                      </div>
                       <Badge>{proposal.status}</Badge>
                     </CardTitle>
                     <CardDescription>
-                      Creator: {proposal.creator.toString().slice(0, 8)}...
-                      {proposal.creator.toString().slice(-8)}
+                      <div className="flex items-center gap-0.5">
+                        <span>
+                          Creator: {proposal.creator.toString().slice(0, 8)}...
+                          {proposal.creator.toString().slice(-8)}
+                        </span>
+                        <Copy
+                          className="text-muted-foreground hover:text-foreground h-2.5 w-2.5 cursor-pointer transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(
+                              proposal.creator.toString()
+                            );
+                            toast.success("Creator address copied");
+                          }}
+                        />
+                      </div>
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -388,35 +448,102 @@ export function ProposalList({
 
                         {!proposal.executed && !proposal.cancelled && (
                           <>
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                handleApprove(proposal.transactionIndex)
-                              }
-                              disabled={!isMember || actionLoading !== null}
-                            >
-                              {actionLoading ===
-                              `approve-${proposal.transactionIndex}` ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
+                            {!isMember ||
+                            actionLoading !== null ||
+                            currentUserApproved ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="hover:bg-green-500 hover:text-white"
+                                        onClick={() =>
+                                          handleApprove(
+                                            proposal.transactionIndex
+                                          )
+                                        }
+                                        disabled={true}
+                                      >
+                                        {actionLoading ===
+                                        `approve-${proposal.transactionIndex}` ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Check className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {currentUserApproved
+                                      ? "Already Approved"
+                                      : !isMember
+                                        ? "Not a member"
+                                        : "Action in progress"}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="hover:bg-green-500 hover:text-white"
+                                onClick={() =>
+                                  handleApprove(proposal.transactionIndex)
+                                }
+                              >
                                 <Check className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() =>
-                                handleReject(proposal.transactionIndex)
-                              }
-                              disabled={!isMember || actionLoading !== null}
-                            >
-                              {actionLoading ===
-                              `reject-${proposal.transactionIndex}` ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
+                              </Button>
+                            )}
+                            {!isMember ||
+                            actionLoading !== null ||
+                            currentUserRejected ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="hover:bg-red-500 hover:text-white"
+                                        onClick={() =>
+                                          handleReject(
+                                            proposal.transactionIndex
+                                          )
+                                        }
+                                        disabled={true}
+                                      >
+                                        {actionLoading ===
+                                        `reject-${proposal.transactionIndex}` ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <X className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {currentUserRejected
+                                      ? "Already Rejected"
+                                      : !isMember
+                                        ? "Not a member"
+                                        : "Action in progress"}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="hover:bg-red-500 hover:text-white"
+                                onClick={() =>
+                                  handleReject(proposal.transactionIndex)
+                                }
+                              >
                                 <X className="h-4 w-4" />
-                              )}
-                            </Button>
+                              </Button>
+                            )}
                             {hasMetThreshold && (
                               <Button
                                 size="sm"
