@@ -1,10 +1,12 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { PublicKey } from "@solana/web3.js";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,9 +19,11 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
+  FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { RPC_ERROR_PATTERNS, getErrorMessage } from "@/lib/error-handler";
 import { SquadService } from "@/lib/squad";
+import { chainIdSchema, labelSchema, publicKeySchema } from "@/lib/validation";
 import { useChainStore } from "@/stores/chain-store";
 import { useMultisigStore } from "@/stores/multisig-store";
 import { useWalletStore } from "@/stores/wallet-store";
@@ -41,10 +46,13 @@ interface ImportMultisigDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-interface ImportFormValues {
-  chainId: string;
-  multisigAddress: string;
-}
+const importMultisigFormSchema = z.object({
+  chainId: chainIdSchema,
+  multisigAddress: publicKeySchema,
+  label: labelSchema.optional(),
+});
+
+type ImportFormValues = z.infer<typeof importMultisigFormSchema>;
 
 export function ImportMultisigDialog({
   open,
@@ -57,9 +65,11 @@ export function ImportMultisigDialog({
   const { addMultisig } = useMultisigStore();
 
   const form = useForm<ImportFormValues>({
+    resolver: zodResolver(importMultisigFormSchema),
     defaultValues: {
       chainId: "",
       multisigAddress: "",
+      label: "",
     },
   });
 
@@ -69,29 +79,13 @@ export function ImportMultisigDialog({
       return;
     }
 
-    if (!data.chainId) {
-      toast.error("Please select a chain");
-      return;
-    }
-
     const chain = chains.find((c) => c.id === data.chainId);
     if (!chain) {
       toast.error("Selected chain not found");
       return;
     }
 
-    if (!data.multisigAddress.trim()) {
-      toast.error("Please enter a multisig address");
-      return;
-    }
-
-    let multisigPubkey: PublicKey;
-    try {
-      multisigPubkey = new PublicKey(data.multisigAddress.trim());
-    } catch {
-      toast.error("Invalid multisig address");
-      return;
-    }
+    const multisigPubkey = new PublicKey(data.multisigAddress);
 
     setLoading(true);
     try {
@@ -113,6 +107,7 @@ export function ImportMultisigDialog({
         msChangeIndex: 0,
         programId: new PublicKey(chain.squadsV4ProgramId),
         chainId: chain.id,
+        label: data.label,
       });
 
       toast.success("Multisig imported successfully!");
@@ -179,6 +174,7 @@ export function ImportMultisigDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -198,6 +194,27 @@ export function ImportMultisigDialog({
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                  <FormDescription>
+                    The public key of an existing Squads V4 multisig
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="label"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Label (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="My Imported Multisig" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                  <FormDescription>
+                    A friendly name for this multisig
+                  </FormDescription>
                 </FormItem>
               )}
             />

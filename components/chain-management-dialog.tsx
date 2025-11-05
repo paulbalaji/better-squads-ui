@@ -1,9 +1,11 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,12 +18,19 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
+  FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+  chainNameSchema,
+  programIdSchema,
+  rpcUrlSchema,
+} from "@/lib/validation";
 import { useChainStore } from "@/stores/chain-store";
 import type { ChainConfig } from "@/types/chain";
 
@@ -30,12 +39,14 @@ interface ChainManagementDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-interface ChainFormValues {
-  name: string;
-  rpcUrl: string;
-  squadsV4ProgramId: string;
-  explorerUrl: string;
-}
+const chainFormSchema = z.object({
+  name: chainNameSchema,
+  rpcUrl: rpcUrlSchema,
+  squadsV4ProgramId: programIdSchema,
+  explorerUrl: rpcUrlSchema.optional().or(z.literal("")),
+});
+
+type ChainFormValues = z.infer<typeof chainFormSchema>;
 
 export function ChainManagementDialog({
   open,
@@ -46,6 +57,7 @@ export function ChainManagementDialog({
   const [editingChain, setEditingChain] = useState<ChainConfig | null>(null);
 
   const form = useForm<ChainFormValues>({
+    resolver: zodResolver(chainFormSchema),
     defaultValues: {
       name: "",
       rpcUrl: "",
@@ -55,11 +67,6 @@ export function ChainManagementDialog({
   });
 
   const handleSubmit = form.handleSubmit((data) => {
-    if (!data.name || !data.rpcUrl || !data.squadsV4ProgramId) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-
     if (editingChain) {
       updateChain(editingChain.id, {
         name: data.name,
@@ -162,6 +169,7 @@ export function ChainManagementDialog({
                     <FormControl>
                       <Input placeholder="e.g., Eclipse Mainnet" {...field} />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -177,6 +185,10 @@ export function ChainManagementDialog({
                     <FormControl>
                       <Input placeholder="https://..." {...field} />
                     </FormControl>
+                    <FormMessage />
+                    <FormDescription>
+                      Must use HTTPS or WSS protocol for security
+                    </FormDescription>
                   </FormItem>
                 )}
               />
@@ -196,6 +208,7 @@ export function ChainManagementDialog({
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -212,6 +225,7 @@ export function ChainManagementDialog({
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
               />

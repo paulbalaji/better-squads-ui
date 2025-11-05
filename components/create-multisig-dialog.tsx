@@ -1,5 +1,6 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -21,6 +22,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
+  FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { ledgerService } from "@/lib/ledger";
 import { SquadService } from "@/lib/squad";
+import { createMultisigSchema } from "@/lib/validation";
 import { useChainStore } from "@/stores/chain-store";
 import { useMultisigStore } from "@/stores/multisig-store";
 import { useWalletStore } from "@/stores/wallet-store";
@@ -43,15 +46,17 @@ interface CreateMultisigDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-interface Member {
-  address: string;
-  permissions: number;
-}
-
 interface CreateMultisigFormValues {
-  chainId: string;
+  label?: string;
   threshold: number;
-  members: Member[];
+  members: Array<{
+    key: string;
+    permissions: {
+      mask: number;
+    };
+  }>;
+  timeLock?: number;
+  chainId: string;
 }
 
 export function CreateMultisigDialog({
@@ -65,10 +70,12 @@ export function CreateMultisigDialog({
   const { addMultisig } = useMultisigStore();
 
   const form = useForm<CreateMultisigFormValues>({
+    resolver: zodResolver(createMultisigSchema),
     defaultValues: {
       chainId: "",
       threshold: 2,
-      members: [{ address: "", permissions: 7 }],
+      members: [{ key: "", permissions: { mask: 7 } }],
+      label: "",
     },
   });
 
@@ -94,30 +101,6 @@ export function CreateMultisigDialog({
       return;
     }
 
-    if (data.members.length < 2) {
-      toast.error("At least 2 members are required");
-      return;
-    }
-
-    if (data.threshold < 1 || data.threshold > data.members.length) {
-      toast.error("Invalid threshold value");
-      return;
-    }
-
-    const invalidMembers = data.members.filter((m) => {
-      try {
-        new PublicKey(m.address);
-        return false;
-      } catch {
-        return true;
-      }
-    });
-
-    if (invalidMembers.length > 0) {
-      toast.error("Invalid member addresses");
-      return;
-    }
-
     setLoading(true);
     try {
       const squadService = new SquadService(
@@ -130,9 +113,10 @@ export function CreateMultisigDialog({
           creator: publicKey,
           threshold: data.threshold,
           members: data.members.map((m) => ({
-            key: new PublicKey(m.address),
-            permissions: { mask: m.permissions },
+            key: new PublicKey(m.key),
+            permissions: { mask: m.permissions.mask },
           })),
+          timeLock: data.timeLock,
         });
 
       const transaction = new Transaction().add(instruction);
@@ -171,6 +155,7 @@ export function CreateMultisigDialog({
         msChangeIndex: 0,
         programId: new PublicKey(chain.squadsV4ProgramId),
         chainId: chain.id,
+        label: data.label,
       });
 
       toast.success("Multisig created successfully!");
@@ -217,6 +202,23 @@ export function CreateMultisigDialog({
           <form onSubmit={handleSubmit} className="space-y-4">
             <FormField
               control={form.control}
+              name="label"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Label (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="My Multisig Wallet" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                  <FormDescription>
+                    A friendly name for this multisig
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="chainId"
               render={({ field }) => (
                 <FormItem>
@@ -240,6 +242,7 @@ export function CreateMultisigDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -261,6 +264,7 @@ export function CreateMultisigDialog({
                       onChange={(e) => field.onChange(parseInt(e.target.value))}
                     />
                   </FormControl>
+                  <FormMessage />
                   <FormDescription>
                     Number of signatures required to approve a transaction
                   </FormDescription>
@@ -275,7 +279,7 @@ export function CreateMultisigDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => append({ address: "", permissions: 7 })}
+                  onClick={() => append({ key: "", permissions: { mask: 7 } })}
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Add Member
@@ -287,18 +291,19 @@ export function CreateMultisigDialog({
                   <div key={field.id} className="flex gap-2">
                     <FormField
                       control={form.control}
-                      name={`members.${index}.address`}
+                      name={`members.${index}.key`}
                       render={({ field }) => (
                         <FormItem className="flex-1">
                           <FormControl>
                             <Input placeholder="Member address" {...field} />
                           </FormControl>
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
                     <FormField
                       control={form.control}
-                      name={`members.${index}.permissions`}
+                      name={`members.${index}.permissions.mask`}
                       render={({ field }) => (
                         <FormItem className="w-20">
                           <FormControl>
@@ -311,6 +316,7 @@ export function CreateMultisigDialog({
                               }
                             />
                           </FormControl>
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
