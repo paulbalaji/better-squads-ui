@@ -652,30 +652,26 @@ export function MonitoringView() {
                             )}
                           </TableCell>
                           <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <div className="flex flex-col gap-1">
-                                <span>
-                                  {proposal.multisigAccount.label || "Unnamed"}
-                                </span>
+                            <div className="flex flex-col gap-1">
+                              <span>
+                                {proposal.multisigAccount.label || "Unnamed"}
+                              </span>
+                              <div className="flex items-center gap-1">
                                 <span className="text-muted-foreground text-xs">
                                   {proposal.multisig.toString().slice(0, 8)}...
                                   {proposal.multisig.toString().slice(-8)}
                                 </span>
+                                <Copy
+                                  className="text-muted-foreground hover:text-foreground h-3 w-3 cursor-pointer transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(
+                                      proposal.multisig.toString()
+                                    );
+                                    toast.success("Multisig address copied");
+                                  }}
+                                />
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigator.clipboard.writeText(
-                                    proposal.multisig.toString()
-                                  );
-                                  toast.success("Multisig address copied");
-                                }}
-                              >
-                                <Copy className="h-3 w-3" />
-                              </Button>
                             </div>
                           </TableCell>
                           <TableCell>
