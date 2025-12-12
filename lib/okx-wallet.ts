@@ -149,7 +149,10 @@ export class OkxWalletService {
   /**
    * Register event listener
    */
-  on(event: "connect" | "disconnect" | "accountChanged", callback: () => void): void {
+  on(
+    event: "connect" | "disconnect" | "accountChanged",
+    callback: () => void
+  ): void {
     try {
       const provider = this.getProvider();
       provider.on(event, callback);
@@ -161,7 +164,10 @@ export class OkxWalletService {
   /**
    * Remove event listener
    */
-  off(event: "connect" | "disconnect" | "accountChanged", callback: () => void): void {
+  off(
+    event: "connect" | "disconnect" | "accountChanged",
+    callback: () => void
+  ): void {
     try {
       const provider = this.getProvider();
       provider.off(event, callback);
